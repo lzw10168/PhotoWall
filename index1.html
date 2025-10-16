@@ -27,30 +27,31 @@
 </head>
 
 <body>
-    
+
     <div class="m-main">
-		<div class="player">
-			<a href="javascript:void(0)" rel="external nofollow" rel="external nofollow" id="js-play">
-				<img src="./img-one/开始.png" alt="" id="img1"/>
+        <div class="player">
+            <a href="javascript:void(0)" rel="external nofollow" rel="external nofollow" id="js-play">
+                <img src="./img-one/开始.png" alt="" id="img1" />
             </a>
-			<a href="javascript:void(0)" rel="external nofollow" rel="external nofollow" id="js-pause">
-				<img src="./img-one/暂停.png" alt="" id="img2"/>
-			</a>
-			<div class="play-box">
-				<div class="left">
-					<p class="timeline"><span style=""></span></p>
-					<div class="info">
-						<span class="size">00:00</span>
-						<span class="timeshow">00:00</span>
-					</div>
-				</div>
-			</div>
-		</div>
-		<div class="video">
-			<video controls autoplay name="media" id="js-video"><source src="./mp3/白月光与朱砂痣.mp3" type="video/mp4"></video>
-		</div>
-	</div>
-</div>
+            <a href="javascript:void(0)" rel="external nofollow" rel="external nofollow" id="js-pause">
+                <img src="./img-one/暂停.png" alt="" id="img2" />
+            </a>
+            <div class="play-box">
+                <div class="left">
+                    <p class="timeline"><span style=""></span></p>
+                    <div class="info">
+                        <span class="size">00:00</span>
+                        <span class="timeshow">00:00</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="video">
+            <video controls autoplay name="media" id="js-video">
+                <source src="./mp3/白月光与朱砂痣.mp3" type="video/mp4">
+            </video>
+        </div>
+    </div>
     <div id="jsi-cherry-container" class="container">
         <div class="box">
             <ul class="minbox">
@@ -95,14 +96,14 @@
                     // 播放
                     $(document).on('click', '#js-play', function () {
                         audio.play()
-                        $('#img1').css("display","none");
-                        $('#img2').css("display","block");
+                        $('#img1').css("display", "none");
+                        $('#img2').css("display", "block");
                     });
                     // 暂停
                     $(document).on('click', '#js-pause', function () {
                         audio.pause()
-                        $('#img1').css("display","block");
-                        $('#img2').css("display","none");
+                        $('#img1').css("display", "block");
+                        $('#img2').css("display", "none");
                     });
                 });
                 setInterval(function () {
@@ -135,12 +136,21 @@
         var RENDERER = {
             INIT_CHERRY_BLOSSOM_COUNT: 30,
             MAX_ADDING_INTERVAL: 10,
+            MAX_CHERRY_COUNT: 120,
+            TARGET_FPS: 60,
+            MIN_FPS: 45,
 
             init: function () {
                 this.setParameters();
                 this.reconstructMethods();
                 this.createCherries();
                 this.render();
+                document.addEventListener('visibilitychange', function () {
+                    RENDERER.isPaused = document.hidden;
+                    if (!RENDERER.isPaused) {
+                        RENDERER.lastFrameTime = performance.now();
+                    }
+                });
                 if (
                     navigator.userAgent.match(
                         /(phone|pod|iPhone|iPod|ios|Android|Mobile|BlackBerry|IEMobile|MQQBrowser|JUC|Fennec|wOSBrowser|BrowserNG|WebOS|Symbian|Windows Phone)/i
@@ -168,6 +178,12 @@
                     (this.MAX_ADDING_INTERVAL * 1000) / this.width
                 );
                 this.addingInterval = this.maxAddingInterval;
+                this.maxCherryCount = this.MAX_CHERRY_COUNT;
+                this.lastFrameTime = performance.now();
+                this.fps = this.TARGET_FPS;
+                this.fpsSmoothing = 0.9;
+                this.simplify = false;
+                this.isPaused = false;
             },
             reconstructMethods: function () {
                 this.render = this.render.bind(this);
@@ -175,28 +191,40 @@
             createCherries: function () {
                 for (
                     var i = 0,
-                        length = Math.round(
-                            (this.INIT_CHERRY_BLOSSOM_COUNT * this.width) / 1000
-                        ); i < length; i++
+                    length = Math.round(
+                        (this.INIT_CHERRY_BLOSSOM_COUNT * this.width) / 1000
+                    ); i < length && i < this.maxCherryCount; i++
                 ) {
                     this.cherries.push(new CHERRY_BLOSSOM(this, true));
                 }
             },
             render: function () {
                 requestAnimationFrame(this.render);
+                if (this.isPaused) { return; }
+                var now = performance.now();
+                var dt = now - this.lastFrameTime;
+                this.lastFrameTime = now;
+                var instFps = dt > 0 ? (1000 / dt) : this.TARGET_FPS;
+                this.fps = this.fpsSmoothing * this.fps + (1 - this.fpsSmoothing) * instFps;
+                this.simplify = this.fps < this.MIN_FPS;
                 this.context.clearRect(0, 0, this.width, this.height);
 
                 this.cherries.sort(function (cherry1, cherry2) {
                     return cherry1.z - cherry2.z;
                 });
+                if (this.cherries.length > this.maxCherryCount) {
+                    this.cherries.splice(0, this.cherries.length - this.maxCherryCount);
+                }
                 for (var i = this.cherries.length - 1; i >= 0; i--) {
                     if (!this.cherries[i].render(this.context)) {
                         this.cherries.splice(i, 1);
                     }
                 }
-                if (--this.addingInterval == 0) {
-                    this.addingInterval = this.maxAddingInterval;
-                    this.cherries.push(new CHERRY_BLOSSOM(this, false));
+                if (--this.addingInterval <= 0) {
+                    this.addingInterval = this.maxAddingInterval + (this.simplify ? 5 : 0);
+                    if (this.cherries.length < this.maxCherryCount) {
+                        this.cherries.push(new CHERRY_BLOSSOM(this, false));
+                    }
                 }
             }
         };
@@ -231,15 +259,17 @@
                 this.endTheta = false;
                 this.endPhi = false;
                 this.rippleCount = 0;
+                this.age = 0;
+                this.maxAge = this.getRandomValue(800, 1600); // frames
 
                 var axis = this.getAxis(),
                     theta =
-                    this.theta +
-                    (Math.ceil(
+                        this.theta +
+                        (Math.ceil(
                             -(this.y + this.renderer.height * this.SURFACE_RATE) / this.vy
                         ) *
-                        Math.PI) /
-                    500;
+                            Math.PI) /
+                        500;
                 theta %= Math.PI * 2;
 
                 this.offsetY =
@@ -316,11 +346,15 @@
                 }
             },
             render: function (context) {
+                if (++this.age > this.maxAge) {
+                    return false;
+                }
                 var axis = this.getAxis();
 
                 if (
                     axis.y == this.thresholdY &&
-                    this.rippleCount < this.MAX_RIPPLE_COUNT
+                    this.rippleCount < this.MAX_RIPPLE_COUNT &&
+                    !this.renderer.simplify
                 ) {
                     context.save();
                     context.lineWidth = 2;
